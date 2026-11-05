@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>문제 작업실 · AI 출제 테스트</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<header><div class="brand"><span class="brand-icon">Q</span> 문제 작업실 <span class="label">AI 출제 테스트</span></div><span id="connection" class="connection">연결 확인 중</span></header>
+<main>
+  <section class="intro"><p class="eyebrow">TEACHER WORKSPACE</p><h1>출제는 가볍게, 검토는 한눈에.</h1><p>과목과 주제를 고르고, 필요한 난이도만큼 문제를 만들어보세요.</p></section>
+  <div class="workspace">
+    <aside class="settings" tabindex="0" aria-labelledby="settings-title"><form id="generate-form">
+      <div class="panel-title"><h2 id="settings-title">출제 설정</h2><span>3단계 선택</span></div>
+      <fieldset><legend><b>01</b> 대분류</legend><div id="categories" class="segments"></div></fieldset>
+      <fieldset><legend><b>02</b> 소분류</legend><div id="topics" class="topics"></div></fieldset>
+      <fieldset><legend><b>03</b> 난이도별 문항 수</legend><p class="hint">각 난이도의 개수를 선택하세요. 총 10문항까지 가능합니다.</p><div id="counts"></div></fieldset>
+      <div class="total"><span>총 생성 문항</span><strong><span id="total">4</span><small> 문항</small></strong></div>
+      <p class="hint" id="data-note">선택한 주제로 일반 코딩 문제를 생성합니다.</p>
+      <p id="form-error" role="alert" class="error" hidden></p>
+      <button id="generate" class="primary" type="submit">문제 생성하기 <span>↗</span></button>
+      <p class="footnote">별도 프리셋 없이 선택한 분류와 문항 수로 출제합니다.</p>
+    </form></aside>
+    <section class="results" aria-label="생성 결과">
+      <div class="result-heading"><div><p class="eyebrow">RESULTS</p><h2>생성 결과 <span id="result-count" class="count-badge">0</span></h2></div><div class="downloads" id="downloads" hidden><a id="review-download" class="secondary">검토 노트북 ↓</a><a id="zip-download" class="secondary">전체 파일 ↓</a></div></div>
+      <div id="progress" class="progress-card" hidden aria-live="polite"><div class="progress-head"><strong id="progress-label">생성 중</strong><span id="progress-count"></span></div><div class="progress-track"><div id="progress-bar"></div></div><p id="progress-message"></p></div>
+      <div id="empty" class="empty"><div class="empty-icon">✦</div><h3>첫 문제를 만들어볼까요?</h3><p>왼쪽에서 분류와 문항 수를 선택하면<br>문제·정답·평가 기준이 이곳에 나타납니다.</p><div class="empty-tags"><span>문제</span><span>모범 답안</span><span>100점 채점 기준</span></div></div>
+      <div id="question-list"></div>
+      <p id="result-note" class="footnote" hidden>생성 결과는 검토용 초안입니다. 코드 문법과 배점 합계만 자동 검사하며, 정답 실행과 예상 출력 대조는 강사 확인이 필요합니다.</p>
+    </section>
+  </div>
+</main>
+<footer>문제 작업실 <span>선택은 간단하게 · 검토는 꼼꼼하게</span></footer>
+</body></html>

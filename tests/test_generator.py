@@ -1,4 +1,5 @@
 import csv
+import contextlib
 import io
 import json
 import tempfile
@@ -10,8 +11,9 @@ from pydantic import ValidationError
 
 import demo
 from generator import API, make_csv, save_bundle
-from main import main
+from main import main, parse_difficulty_counts
 from schemas import DatasetSpec, Problem
+from review import build_review
 
 
 class GeneratorTests(unittest.TestCase):
@@ -61,8 +63,11 @@ class GeneratorTests(unittest.TestCase):
     def test_cli_demo_and_no_real_api_call(self):
         with tempfile.TemporaryDirectory() as temp:
             with patch('main.API', side_effect=AssertionError('unexpected API call')):
-                self.assertEqual(main(['--demo', '--type', 'data', '--count', '2', '--output', temp]), 0)
+                self.assertEqual(main(['--demo', '--topic', '매출 집계', '--type', 'data', '--count', '2', '--output', temp]), 0)
             self.assertEqual(len(list(Path(temp).glob('*/problem_*/student/data.csv'))), 2)
+            review_path = next(Path(temp).glob('*/review_all.ipynb'))
+            review = json.loads(review_path.read_text())
+            self.assertEqual(review['metadata']['review']['included_questions'], 2)
 
     def test_api_uses_structured_parse_and_handles_refusal(self):
         from types import SimpleNamespace
@@ -88,11 +93,80 @@ class GeneratorTests(unittest.TestCase):
                     api = constructor.return_value
                     api.calls = []
                     api.generate.return_value = demo.problem(text)
-                    self.assertEqual(main(['--type', 'data', '--csv', str(source), '--output', str(Path(temp) / 'output')]), 0)
+                    self.assertEqual(main(['--topic', '매출 집계', '--type', 'data', '--csv', str(source), '--output', str(Path(temp) / 'output')]), 0)
                     self.assertEqual(api.generate.call_count, 1)
                     self.assertEqual(api.generate.call_args.args[1]['csv_content'], text)
             exported = next(Path(temp).glob('output/*/problem_01/student/data.csv'))
             self.assertEqual(exported.read_text(), text)
+
+    def test_mixed_difficulties_reach_api_and_metadata(self):
+        expected = ['쉬움', '보통', '보통', '어려움']
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-placeholder'}):
+                with patch('main.API') as constructor:
+                    api = constructor.return_value
+                    api.calls = []
+                    api.generate.side_effect = lambda schema, request: demo.problem().model_copy(
+                        update={'difficulty': request['difficulty']})
+                    self.assertEqual(main(['--topic', '반복문', '--difficulty-counts',
+                                           '쉬움:1,보통:2,어려움:1', '--output', temp]), 0)
+                    self.assertEqual([c.args[1]['difficulty'] for c in api.generate.call_args_list], expected)
+            run = next(Path(temp).iterdir())
+            self.assertEqual(json.loads((run / 'run_summary.json').read_text())['difficulty_plan'], expected)
+            self.assertEqual([json.loads(p.read_text())['difficulty'] for p in sorted(run.glob('problem_*/instructor/metadata.json'))], expected)
+
+    def test_invalid_difficulty_counts_fail_before_api(self):
+        cases = ['쉬움', '', '쉬움:0', '쉬움:-1', '쉬움:1.5', ':1', '쉬움:1,',
+                 '쉬움:1,쉬움:2', '쉬움:11', '쉬움:5,보통:6', '쉬움:1:2']
+        with patch('main.API') as api:
+            for value in cases:
+                with self.subTest(value=value), contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as error:
+                        main(['--demo', '--topic', '반복문', '--difficulty-counts', value])
+                    self.assertEqual(error.exception.code, 2)
+            for conflict in [['--count', '1'], ['--difficulty', '기초']]:
+                with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                    main(['--demo', '--topic', '반복문', '--difficulty-counts', '쉬움:1', *conflict])
+            api.assert_not_called()
+        self.assertEqual(parse_difficulty_counts(' 쉬움 : 1 , 보통 : 2 '), ['쉬움', '보통', '보통'])
+
+    def test_review_contains_all_questions_answers_and_grading(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session = Path(temp)
+            data = make_csv(demo.dataset_spec(), 10, 42)
+            for index, text in [(2, data), (1, None)]:
+                problem = demo.problem(text).model_copy(update={'title': f'검토 문항 {index}'})
+                save_bundle(session / f'problem_{index:02d}', problem, text, None,
+                            {'subject': '파이썬', 'topic': '집계', 'difficulty': '보통'})
+            path = build_review(session)
+            document = json.loads(path.read_text())
+            text = '\n'.join(''.join(cell['source']) for cell in document['cells'])
+            self.assertEqual(document['metadata']['review']['included_questions'], 2)
+            self.assertTrue(all(c['cell_type'] == 'markdown' for c in document['cells']))
+            self.assertLess(text.index('# problem_01'), text.index('# problem_02'))
+            for value in [demo.problem().answer_code, demo.problem(data).answer_code,
+                          '평가 방식 · 합계 100점', '부분점수:', '테스트 사례', 'not_run',
+                          'data.csv', '상위 5행', '강사 검토 메모', '학생용 코드']:
+                self.assertIn(value, text)
+            before = path.read_bytes()
+            with self.assertRaises(FileExistsError):
+                build_review(session)
+            self.assertEqual(path.read_bytes(), before)
+            build_review(session, overwrite=True)
+
+    def test_review_reports_missing_and_failed_questions(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session = Path(temp)
+            save_bundle(session / 'problem_01', demo.problem(), None, None, {})
+            (session / 'problem_02' / 'instructor').mkdir(parents=True)
+            (session / 'run_summary.json').write_text(json.dumps(
+                {'errors': [{'question': 3, 'error_type': 'SyntaxError'}]}))
+            document = json.loads(build_review(session).read_text())
+            self.assertEqual(document['metadata']['review']['included_questions'], 1)
+            self.assertEqual(document['metadata']['review']['warning_count'], 2)
+            text = '\n'.join(''.join(c['source']) for c in document['cells'])
+            self.assertIn('problem_02: 검토 자료 읽기 실패', text)
+            self.assertIn('문항 3 생성 실패', text)
 
 
 if __name__ == '__main__':
