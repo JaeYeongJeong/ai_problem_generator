@@ -6,7 +6,7 @@ import io
 from pathlib import Path
 from unittest.mock import patch
 
-from web_app import JobStore, generation_command, validate_selection
+from web_app import JobStore, generation_command, validate_selection, origin_allowed, server_options, handler
 
 
 def selection(topic='pandas', category='pythonlib'):
@@ -14,6 +14,32 @@ def selection(topic='pandas', category='pythonlib'):
 
 
 class WebTests(unittest.TestCase):
+    def test_hosted_port_and_host(self):
+        with patch.dict('os.environ', {'PORT': '9000', 'HOST': '0.0.0.0'}):
+            args = server_options([])
+            self.assertEqual(args.port, 9000)
+            self.assertEqual(args.host, '0.0.0.0')
+            self.assertEqual(server_options(['--port', '8001']).port, 8001)
+
+    def test_https_same_origin_and_external_origin(self):
+        self.assertTrue(origin_allowed('https://example.up.railway.app', 'example.up.railway.app'))
+        self.assertTrue(origin_allowed('http://127.0.0.1:8000', '127.0.0.1:8000'))
+        self.assertFalse(origin_allowed('https://other.example', 'example.up.railway.app'))
+        self.assertFalse(origin_allowed('https://example.up.railway.app.evil.example', 'example.up.railway.app'))
+        self.assertFalse(origin_allowed('null', 'example.up.railway.app'))
+
+    def test_healthcheck_needs_no_api_key(self):
+        cls = handler(JobStore(demo=True))
+        request = object.__new__(cls)
+        request.path = '/api/health'
+        with patch.object(request, 'send_data') as send:
+            request.do_GET()
+            send.assert_called_once_with(200, {'status': 'ok'})
+
+    def test_output_directory_environment(self):
+        with patch.dict('os.environ', {'OUTPUT_DIR': '/tmp/railway-test-outputs'}):
+            self.assertEqual(JobStore().output_root, Path('/tmp/railway-test-outputs'))
+
     def test_selection_validation(self):
         self.assertEqual(validate_selection(selection())[1], 'pandas')
         for value in [None, {}, selection('변수'), selection(category='other'),

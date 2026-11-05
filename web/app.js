@@ -16,5 +16,27 @@ async function jsonRequest(url,options){const response=await fetch(url,options);
 function showJob(job){const count=job.questions.length;$('#result-count').textContent=count;$('#progress-label').textContent=job.status==='running'?'문제를 생성하고 있습니다':job.status==='completed'?'생성 완료':'생성 결과 확인';const target=Object.values(job.selection.counts).reduce((a,b)=>a+b,0);$('#progress-count').textContent=count+' / '+target+'문항';$('#progress-bar').style.width=(job.status==='running'?Math.max(3,count/target*100):100)+'%';$('#progress-message').textContent=job.message;$('#empty').hidden=true;for(let i=state.rendered;i<count;i++)$('#question-list').append(questionCard(job.questions[i],job.id));state.rendered=count;$('#result-note').hidden=count===0;if(job.status!=='running'){setBusy(false);if(job.review){$('#downloads').hidden=false;$('#review-download').href=downloadURL(job.id,job.review);$('#zip-download').href='/api/jobs/'+job.id+'/archive';}if(job.status==='failed'||job.status==='partial'){message([job.message,...job.errors.map(e=>'문항 '+e.question+': '+(e.detail||e.error_type))].join('\n'));}localStorage.removeItem('activeQuestionJob');}}
 async function poll(){try{const job=await jsonRequest('/api/jobs/'+state.job);showJob(job);if(job.status==='running')state.timer=setTimeout(poll,1200);}catch(error){setBusy(false);message(error.message+' 새로고침하면 진행 상황을 다시 확인합니다.');}}
 $('#generate-form').onsubmit=async event=>{event.preventDefault();if(state.busy||total()<1||total()>10)return;message('');setBusy(true);try{const data=await jsonRequest('/api/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({category:state.category,topic:state.topic,counts:state.counts})});state.job=data.id;state.rendered=0;$('#question-list').replaceChildren();$('#downloads').hidden=true;$('#result-count').textContent='0';$('#result-note').hidden=true;$('#progress').hidden=false;$('#progress-label').textContent='생성 준비';$('#progress-message').textContent='선택한 조건으로 출제를 시작합니다.';$('#progress-bar').style.width='3%';$('#empty').hidden=true;localStorage.setItem('activeQuestionJob',state.job);await poll();}catch(error){setBusy(false);message(error.message);}};
-async function init(){renderCounts();try{state.catalog=await jsonRequest('/api/catalog');$('#connection').textContent=state.catalog.demo?'데모 모드 · 고정 예제':state.catalog.ready?'API 연결 준비됨':'API 키 설정 필요';$('#connection').classList.toggle('warn',state.catalog.demo||!state.catalog.ready);renderChoices();update();if(!state.catalog.ready)message('프로젝트 .env에 API 키를 설정한 뒤 서버를 다시 실행하세요.');const saved=localStorage.getItem('activeQuestionJob');if(saved){const job=await jsonRequest('/api/jobs/'+saved);state.category=job.selection.category;state.topic=job.selection.topic;state.counts=job.selection.counts;state.job=saved;['쉬움','보통','어려움'].forEach((level,i)=>$('#count-'+i).value=state.counts[level]);setBusy(job.status==='running');$('#progress').hidden=false;await poll();}}catch(error){localStorage.removeItem('activeQuestionJob');message(error.message);$('#generate').disabled=true;}}
+async function init(){
+  renderCounts();
+  try {
+    state.catalog=await jsonRequest('/api/catalog');
+    $('#connection').textContent=state.catalog.demo?'데모 모드 · 고정 예제':state.catalog.ready?'API 연결 준비됨':'API 키 설정 필요';
+    $('#connection').classList.toggle('warn',state.catalog.demo||!state.catalog.ready);
+    renderChoices();update();
+    if(!state.catalog.ready) message('서버 환경변수 또는 .env에 API 키를 설정한 뒤 서버를 다시 실행하세요.');
+  } catch(error) {
+    message(error.message);$('#generate').disabled=true;return;
+  }
+  const saved=localStorage.getItem('activeQuestionJob');
+  if(!saved) return;
+  try {
+    const job=await jsonRequest('/api/jobs/'+saved);
+    state.category=job.selection.category;state.topic=job.selection.topic;state.counts=job.selection.counts;state.job=saved;
+    ['쉬움','보통','어려움'].forEach((level,i)=>$('#count-'+i).value=state.counts[level]);
+    setBusy(job.status==='running');$('#progress').hidden=false;await poll();
+  } catch(error) {
+    localStorage.removeItem('activeQuestionJob');setBusy(false);
+    message('이전 생성 기록을 불러올 수 없습니다. 서버가 재시작되었다면 새로 생성해주세요.');
+  }
+}
 init();

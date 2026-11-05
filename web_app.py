@@ -1,4 +1,4 @@
-"""Local teacher UI. Reuses the CLI generator; secrets stay on the server."""
+"""Teacher UI for local and hosted testing; secrets stay on the server."""
 import argparse
 import io
 import json
@@ -20,6 +20,15 @@ CATALOG = {
     "pythonlib": {"label": "Python 라이브러리", "subject": "파이썬 라이브러리", "topics": ["numpy", "pandas"]},
 }
 LEVELS = ("쉬움", "보통", "어려움")
+
+
+def origin_allowed(origin, host):
+    if not origin:
+        return True
+    parsed = urlsplit(origin)
+    return (parsed.scheme in ("http", "https") and parsed.netloc.lower() == host.lower()
+            and not parsed.username and parsed.path in ("", "/")
+            and not parsed.query and not parsed.fragment)
 
 
 def validate_selection(data):
@@ -50,7 +59,7 @@ def generation_command(data, output, demo=False):
 class JobStore:
     def __init__(self, demo=False, output_root=None):
         self.demo = demo
-        self.output_root = output_root or ROOT / "outputs"
+        self.output_root = Path(output_root or os.getenv("OUTPUT_DIR") or ROOT / "outputs")
         self.jobs = {}
         self.lock = threading.RLock()
 
@@ -170,6 +179,8 @@ def handler(store):
         def do_GET(self):
             parsed = urlsplit(self.path)
             path = parsed.path
+            if path == "/api/health":
+                return self.send_data(200, {"status": "ok"})
             if path in ("/", "/app.js", "/style.css"):
                 name = "index.html" if path == "/" else path[1:]
                 kind = {"index.html": "text/html", "app.js": "text/javascript", "style.css": "text/css"}[name]
@@ -197,7 +208,7 @@ def handler(store):
             if self.path != "/api/jobs":
                 return self.send_data(404, {"error": "없는 요청입니다."})
             origin = self.headers.get("Origin")
-            if origin and origin != f"http://{self.headers.get('Host')}":
+            if not origin_allowed(origin, self.headers.get("Host", "")):
                 return self.send_data(403, {"error": "현재 화면에서 다시 요청하세요."})
             try:
                 size = int(self.headers.get("Content-Length", "0"))
@@ -206,7 +217,7 @@ def handler(store):
                 data = json.loads(self.rfile.read(size))
                 validate_selection(data)
                 if not store.demo and not os.getenv("OPENAI_API_KEY"):
-                    return self.send_data(400, {"error": "프로젝트 .env에 OPENAI_API_KEY를 설정하고 서버를 다시 실행하세요."})
+                    return self.send_data(400, {"error": "서버 환경변수 또는 .env에 OPENAI_API_KEY를 설정하고 서버를 다시 실행하세요."})
                 identifier = store.create(data)
                 return self.send_data(202, {"id": identifier})
             except (ValueError, TypeError):
@@ -219,14 +230,19 @@ def handler(store):
     return Handler
 
 
-def main():
+def server_options(argv=None):
     parser = argparse.ArgumentParser(description="강사용 문제 생성 웹 화면")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--host", default=os.getenv("HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=os.getenv("PORT", "8000"))
     parser.add_argument("--demo", action="store_true", help="API 없이 고정 예제로 화면 테스트")
-    args = parser.parse_args()
+    return parser.parse_args(argv)
+
+
+def main():
     load_dotenv(ROOT / ".env")
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(JobStore(args.demo)))
-    print(f"문제 생성 화면: http://127.0.0.1:{server.server_port}", flush=True)
+    args = server_options()
+    server = ThreadingHTTPServer((args.host, args.port), handler(JobStore(args.demo)))
+    print(f"문제 생성 서버: http://{args.host}:{server.server_port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
