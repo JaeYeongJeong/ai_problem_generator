@@ -43,14 +43,22 @@ def validate_selection(data):
         raise ValueError("난이도별 문항 수를 선택하세요.")
     if any(type(n) is not int or not 0 <= n <= 10 for n in counts.values()) or not 1 <= sum(counts.values()) <= 10:
         raise ValueError("총 문항 수는 1~10개로 선택하세요.")
+    generate_csv = data.get("generate_csv", topic == "pandas")
+    if type(generate_csv) is not bool:
+        raise ValueError("CSV 생성 여부를 선택하세요.")
+    if category != "pythonlib" and generate_csv:
+        raise ValueError("CSV 생성은 Python 라이브러리에서 선택하세요.")
     return category, topic, counts
 
 
 def generation_command(data, output, demo=False):
     category, topic, counts = validate_selection(data)
+    generate_csv = data.get("generate_csv", topic == "pandas")
     command = [sys.executable, "-B", str(ROOT / "main.py"), "--subject", CATALOG[category]["subject"],
                "--topic", topic, "--difficulty-counts", ",".join(f"{level}:{counts[level]}" for level in LEVELS if counts[level]),
-               "--type", "data" if topic == "pandas" else "general", "--output", str(output)]
+               "--type", "data" if generate_csv else "general", "--output", str(output)]
+    if category == "pythonlib" and not generate_csv:
+        command.extend(["--constraints", "문제당 20분 이내. 외부 CSV 파일을 사용하지 않고 필요한 입력 데이터를 문제에 직접 제공."])
     if demo:
         command.append("--demo")
     return command
@@ -65,6 +73,7 @@ class JobStore:
 
     def create(self, selection):
         validate_selection(selection)
+        selection = dict(selection, generate_csv=selection.get("generate_csv", selection["topic"] == "pandas"))
         with self.lock:
             if any(job["status"] == "running" for job in self.jobs.values()):
                 raise RuntimeError("다른 문제를 생성하고 있습니다. 완료 후 다시 시도하세요.")

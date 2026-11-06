@@ -59,6 +59,39 @@ class WebTests(unittest.TestCase):
         cmd = generation_command(selection('numpy'), Path('/tmp/test-output'))
         self.assertEqual(cmd[cmd.index('--type')+1], 'general')
 
+    def test_csv_choice_controls_both_libraries(self):
+        for topic in ['numpy', 'pandas']:
+            for generate_csv in [False, True]:
+                with self.subTest(topic=topic, generate_csv=generate_csv):
+                    data = dict(selection(topic), generate_csv=generate_csv)
+                    cmd = generation_command(data, Path('/tmp/test-output'))
+                    self.assertEqual(cmd[cmd.index('--type')+1], 'data' if generate_csv else 'general')
+                    if not generate_csv:
+                        self.assertIn('외부 CSV 파일을 사용하지 않고', cmd[cmd.index('--constraints')+1])
+
+    def test_invalid_csv_choice_is_rejected(self):
+        for value in ['true', 'false', 1, None]:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_selection(dict(selection(), generate_csv=value))
+        with self.assertRaises(ValueError):
+            validate_selection(dict(selection('변수', 'python'), generate_csv=True))
+
+    def test_csv_choice_changes_saved_files(self):
+        for topic in ['numpy', 'pandas']:
+            for generate_csv in [False, True]:
+                with self.subTest(topic=topic, generate_csv=generate_csv), tempfile.TemporaryDirectory() as temp:
+                    store = JobStore(demo=True, output_root=Path(temp))
+                    with patch('web_app.threading.Thread.start'):
+                        identifier = store.create(dict(selection(topic), generate_csv=generate_csv))
+                    store.run(identifier)
+                    result = store.snapshot(identifier)
+                    self.assertEqual(result['status'], 'completed')
+                    self.assertEqual(result['selection']['generate_csv'], generate_csv)
+                    self.assertTrue(all(bool(q['csv_file']) == generate_csv for q in result['questions']))
+                    with zipfile.ZipFile(io.BytesIO(store.archive(identifier))) as archive:
+                        csv_files = [p for p in archive.namelist() if p.endswith('/student/data.csv')]
+                        self.assertEqual(len(csv_files), 2 if generate_csv else 0)
+
     def test_demo_job_persists_and_downloads_results(self):
         with tempfile.TemporaryDirectory() as temp:
             store = JobStore(demo=True, output_root=Path(temp))
