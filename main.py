@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from generator import API, make_csv, save_bundle
 from schemas import DatasetSpec, Problem
 from review import build_review
+from delivery import build_delivery
 
 ROOT = Path(__file__).resolve().parent
 
@@ -26,7 +27,7 @@ def error_detail(exc):
         return "API 연결에 실패했습니다. 네트워크와 프록시 설정을 확인하세요."
     if isinstance(exc, ValidationError):
         locations = [".".join(map(str, e['loc'])) for e in exc.errors()]
-        return "생성 결과 형식 또는 배점 검사 실패: " + ", ".join(locations)
+        return "생성 결과 형식 검사 실패: " + ", ".join(locations)
     if isinstance(exc, SyntaxError):
         return f"생성 코드에 Python 문법 오류가 있습니다 (행 {exc.lineno})."
     if isinstance(exc, ValueError):
@@ -53,7 +54,7 @@ def parse_difficulty_counts(value):
 
 
 def parser():
-    p = argparse.ArgumentParser(description="Python 문제·정답·채점 기준·CSV 생성기")
+    p = argparse.ArgumentParser(description="Python 문제·정답·CSV 생성기")
     p.add_argument("--type", choices=["general", "data"], default="general", help="일반형 / CSV 활용형")
     p.add_argument("--subject", default="파이썬")
     p.add_argument("--topic", required=True, help="출제 범위, ex) 문자열, 리스트, 딕셔너리, 파일 입출력")
@@ -131,12 +132,12 @@ def main(argv=None):
                         "end_date='2026-01-31' missing_rate=0으로 채워라. 정수 범위 안에는 정수가 존재해야 한다. "
                         "결측치가 학습 목표일 때만 missing_rate를 설정하라. 시작일은 종료일 이하여야 한다.")))
                 data = make_csv(spec, args.rows, args.seed + i)
-            print(f"[{i+1}/{len(plan)} / {difficulty}] 문제·정답·채점 기준 생성", flush=True)
+            print(f"[{i+1}/{len(plan)} / {difficulty}] 문제·정답 생성", flush=True)
             if args.demo:
                 from demo import problem
                 result = problem(data).model_copy(update={"difficulty": difficulty})
             else:
-                result = api.generate(Problem, dict(request, task="문제 1개와 정답·채점 기준·테스트 사례를 생성하라.",
+                result = api.generate(Problem, dict(request, task="문제 1개와 학생용 풀이 칸·강사용 정답·테스트 사례를 생성하라. 웹 전용 채점 가이드라인은 grading_guidelines_markdown 필드에만 작성하고 확정 배점과 부분점수는 작성하지 마라.",
                     csv_content=data, dataset_spec=spec.model_dump() if spec else None))
             folder = session / f"problem_{i+1:02d}"
             save_bundle(folder, result, data, spec, dict(request, model=model if api else "fixed_demo",
@@ -152,9 +153,12 @@ def main(argv=None):
             print(f"문항 {i+1} 생성 실패: {detail}", file=sys.stderr)
     (session / "run_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     if summary["results"]:
+        files = build_delivery(session)
+        print(f"강사용 답안: {session / files['instructor']}")
+        print(f"학생용 문제지: {session / files['student']}")
         review_path = build_review(session)
         print(f"전체 검토 파일: {review_path.resolve()}")
-    print("검증 범위: 형식·배점·Python 문법. 정답 실행과 예상 출력 대조는 강사 확인이 필요합니다.")
+    print("검증 범위: 형식·Python 문법. 정답 실행과 예상 출력 대조는 강사 확인이 필요합니다.")
     return 1 if summary["errors"] else 0
 
 

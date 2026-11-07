@@ -66,12 +66,14 @@ class Problem(StrictModel):
     answer_code: str = Field(min_length=1)
     expected_output: str = Field(min_length=1)
     explanation: str = Field(min_length=1)
-    rubric: list[Criterion] = Field(min_length=1)
+    grading_guidelines_markdown: str = Field(default_factory=str, min_length=1, description="웹 전용 채점 참고 가이드라인. 배포 파일에는 포함하지 않음.")
     test_cases: list[TestCase] = Field(min_length=1)
     libraries: list[str]
 
-    @model_validator(mode="after")
-    def total_points(self):
-        if sum(c.points for c in self.rubric) != 100:
-            raise ValueError("채점 기준의 배점 합계는 100점이어야 합니다.")
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def read_legacy_grading(cls, value):
+        # Historical problem files remain readable while grading is on hold.
+        if isinstance(value, dict) and "rubric" in value:
+            return {key: item for key, item in value.items() if key != "rubric"}
+        return value

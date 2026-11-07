@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from web_app import JobStore, generation_command, validate_selection, origin_allowed, server_options, handler
+from delivery import TEACHER_NOTEBOOK, STUDENT_NOTEBOOK
 
 
 def selection(topic='pandas', category='pythonlib'):
@@ -89,7 +90,7 @@ class WebTests(unittest.TestCase):
                     self.assertEqual(result['selection']['generate_csv'], generate_csv)
                     self.assertTrue(all(bool(q['csv_file']) == generate_csv for q in result['questions']))
                     with zipfile.ZipFile(io.BytesIO(store.archive(identifier))) as archive:
-                        csv_files = [p for p in archive.namelist() if p.endswith('/student/data.csv')]
+                        csv_files = [p for p in archive.namelist() if p.startswith('data/') and p.endswith('.csv')]
                         self.assertEqual(len(csv_files), 2 if generate_csv else 0)
 
     def test_demo_job_persists_and_downloads_results(self):
@@ -107,6 +108,9 @@ class WebTests(unittest.TestCase):
             self.assertNotIn('output', result)
             self.assertNotIn('run', result)
             self.assertIsNotNone(result['questions'][0]['csv_file'])
+            self.assertEqual(result['files'], {'instructor': TEACHER_NOTEBOOK, 'student': STUDENT_NOTEBOOK})
+            self.assertIn('data/problem_01.csv', result['questions'][0]['answer_code'])
+            self.assertNotIn('rubric', result['questions'][0])
             target = store.download(identifier, 'review_all.ipynb')
             self.assertEqual(json.loads(target.read_text())['metadata']['review']['included_questions'], 2)
             with self.assertRaises(FileNotFoundError):
@@ -114,10 +118,23 @@ class WebTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 store.download(identifier, 'run_summary.json')
             with zipfile.ZipFile(io.BytesIO(store.archive(identifier))) as archive:
-                self.assertIn('review_all.ipynb', archive.namelist())
-                self.assertIn('problem_01/student/data.csv', archive.namelist())
+                self.assertEqual(set(archive.namelist()), {
+                    TEACHER_NOTEBOOK, STUDENT_NOTEBOOK, 'data/problem_01.csv', 'data/problem_02.csv'})
                 self.assertFalse(any('.env' in p for p in archive.namelist()))
             self.assertIsNone(store.snapshot('unknown'))
+
+    def test_korean_download_name_uses_encoded_header(self):
+        from unittest.mock import Mock
+        from urllib.parse import quote
+        request = object.__new__(handler(JobStore(demo=True)))
+        request.send_response = Mock()
+        request.send_header = Mock()
+        request.end_headers = Mock()
+        request.wfile = io.BytesIO()
+        request.send_data(200, b'{}', filename=TEACHER_NOTEBOOK)
+        header = next(c.args[1] for c in request.send_header.call_args_list if c.args[0] == 'Content-Disposition')
+        header.encode('ascii')
+        self.assertIn(quote(TEACHER_NOTEBOOK), header)
 
 
 if __name__ == '__main__':

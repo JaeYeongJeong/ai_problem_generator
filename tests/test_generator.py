@@ -34,11 +34,21 @@ class GeneratorTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 DatasetSpec.model_validate(spec)
 
-    def test_bad_grading_total_is_rejected(self):
+    def test_grading_is_deferred_and_legacy_files_are_readable(self):
         data = demo.problem().model_dump()
-        data['rubric'][0]['points'] = 1
-        with self.assertRaises(ValidationError):
-            Problem.model_validate(data)
+        self.assertNotIn('rubric', data)
+        self.assertNotIn('rubric', Problem.model_json_schema()['properties'])
+        data['rubric'] = [{'criterion': '과거 기준', 'points': 40, 'partial_credit': '보류'}]
+        self.assertNotIn('rubric', Problem.model_validate(data).model_dump())
+
+    def test_guideline_schema_supports_api_and_legacy_records(self):
+        from openai.lib._pydantic import to_strict_json_schema
+        schema = to_strict_json_schema(Problem)
+        self.assertIn('grading_guidelines_markdown', schema['required'])
+        self.assertNotIn('default', schema['properties']['grading_guidelines_markdown'])
+        record = demo.problem().model_dump()
+        record.pop('grading_guidelines_markdown')
+        self.assertEqual(Problem.model_validate(record).grading_guidelines_markdown, '')
 
     def test_export_separates_student_and_teacher(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -130,7 +140,7 @@ class GeneratorTests(unittest.TestCase):
             api.assert_not_called()
         self.assertEqual(parse_difficulty_counts(' 쉬움 : 1 , 보통 : 2 '), ['쉬움', '보통', '보통'])
 
-    def test_review_contains_all_questions_answers_and_grading(self):
+    def test_review_contains_all_questions_and_answers_without_grading(self):
         with tempfile.TemporaryDirectory() as temp:
             session = Path(temp)
             data = make_csv(demo.dataset_spec(), 10, 42)
@@ -145,9 +155,11 @@ class GeneratorTests(unittest.TestCase):
             self.assertTrue(all(c['cell_type'] == 'markdown' for c in document['cells']))
             self.assertLess(text.index('# problem_01'), text.index('# problem_02'))
             for value in [demo.problem().answer_code, demo.problem(data).answer_code,
-                          '평가 방식 · 합계 100점', '부분점수:', '테스트 사례', 'not_run',
+                          '테스트 사례', 'not_run',
                           'data.csv', '상위 5행', '강사 검토 메모', '학생용 코드']:
                 self.assertIn(value, text)
+            self.assertNotIn('평가 방식', text)
+            self.assertNotIn('부분점수', text)
             before = path.read_bytes()
             with self.assertRaises(FileExistsError):
                 build_review(session)

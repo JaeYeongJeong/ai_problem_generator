@@ -59,9 +59,6 @@ def build_review(session: Path, *, overwrite=False):
             sections.append(cell("## 정답 코드\n\n" + fenced(problem.answer_code, "python")))
             sections.append(cell("## 예상 출력 (AI 작성 · 실행 검증과 별개)\n\n" + fenced(problem.expected_output)))
             sections.append(cell("## 해설\n\n" + problem.explanation))
-            rubric = "\n\n".join(f"### {i}. {c.criterion} ({c.points}점)\n\n부분점수: {c.partial_credit}"
-                                     for i, c in enumerate(problem.rubric, 1))
-            sections.append(cell(f"## 평가 방식 · 합계 {sum(c.points for c in problem.rubric)}점\n\n" + rubric))
             cases = "\n\n".join(f"### 사례 {i}: {t.description}\n\n입력: {t.input_description}\n\n예상 결과:\n\n" + fenced(t.expected_result)
                                    for i, t in enumerate(problem.test_cases, 1))
             sections.append(cell("## 테스트 사례 (검토용 · 자동 실행하지 않음)\n\n" + cases))
@@ -74,7 +71,7 @@ def build_review(session: Path, *, overwrite=False):
             ])
             sections.append(cell("## 저장된 검증 상태\n\n" + status + "\n\n"
                                  "## 강사 검토 메모\n\n- [ ] 학습 범위·난이도 적절\n- [ ] 문제 조건 명확\n"
-                                 "- [ ] 정답 실행·예상 출력 대조\n- [ ] 배점·부분점수 기준 적절\n\n수정 의견: \n\n---"))
+                                 "- [ ] 정답 실행·예상 출력 대조\n\n수정 의견: \n\n---"))
             included += 1
         except (OSError, ValueError, TypeError, AttributeError, KeyError) as exc:
             warnings.append(f"- {folder.name}: 검토 자료 읽기 실패 ({type(exc).__name__})")
@@ -83,7 +80,7 @@ def build_review(session: Path, *, overwrite=False):
     for error in summary.get("errors", []):
         warnings.append(f"- 문항 {error.get('question', '?')} 생성 실패: {error.get('detail', error.get('error_type', '미기록'))}")
     header = (f"# 전체 문제 검토\n\n실행 폴더: `{session.name}` · 포함 문항: {included}개\n\n"
-              "강사용 자료입니다. 문제·학생 코드·정답·해설·배점·부분점수·테스트 사례를 모았습니다.\n\n"
+              "강사용 자료입니다. 문제·학생 코드·정답·해설·테스트 사례를 모았습니다.\n\n"
               "코드는 읽기용 Markdown으로 표시하며 이 노트북에서 자동 실행하지 않습니다. "
               "예상 출력과 테스트 사례는 저장된 생성 결과이며 정확성 검증 완료를 의미하지 않습니다.\n\n"
               "## 목차\n\n" + ("\n".join(index) or "표시할 문항이 없습니다."))

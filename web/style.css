@@ -24,3 +24,85 @@
   outline: 3px solid #afa1ff;
   outline-offset: 3px;
 }
+
+/* Instructor notebook preview: rendered Markdown and read-only Python cells. */
+.notebook-cell {
+  min-width: 0;
+  border: 1px solid #dedfe9;
+  border-radius: 9px;
+  margin: 0 0 16px;
+  overflow: hidden;
+}
+.cell-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 37px;
+  padding: 7px 12px;
+  background: #fafafd;
+  border-bottom: 1px solid #e9e9f0;
+  color: #73788b;
+  font-size: 11px;
+}
+.cell-type-icon {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #8272be;
+  min-width: 21px;
+}
+.cell-language { margin-left: auto; color: #969baa; font-size: 10px; }
+.cell-markdown-body { padding: 19px 22px 22px; background: white; }
+.cell-markdown-body .text-block > :first-child { margin-top: 0; }
+.cell-markdown-body h1 { font-size: 20px; line-height: 1.6; margin: 18px 0 12px; letter-spacing: -.5px; }
+.cell-markdown-body h2 { font-size: 17px; margin: 17px 0 10px; }
+.cell-markdown-body h3 { font-size: 15px; margin: 16px 0 8px; }
+.cell-markdown-body h4, .cell-markdown-body h5, .cell-markdown-body h6 { font-size: 13px; margin: 14px 0 6px; }
+.cell-markdown-body ul, .cell-markdown-body ol { padding-left: 23px; margin: 9px 0; }
+.cell-markdown-body li { padding-left: 3px; margin: 4px 0; }
+.cell-markdown-body :not(pre) > code {
+  background: #f0eef8;
+  color: #675397;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font: .92em ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.cell-markdown-body blockquote { border-left: 3px solid #c7bde8; color: #75798b; margin: 12px 0; padding-left: 12px; }
+.cell-markdown-body hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
+.cell-markdown-body a:not(.secondary) { color: var(--purple); text-decoration: underline; }
+.cell-markdown-body .secondary { margin-top: 12px; }
+.notebook-code { border-left: 3px solid #a99bdf; background: #f8f9fc; }
+.notebook-code .cell-toolbar { background: #f3f2f9; }
+.cell-copy { font-size: 10px; color: #6e648a; background: white; border: 1px solid #ddd9eb; border-radius: 5px; padding: 2px 9px; }
+.cell-copy:hover { background: var(--light); }
+.cell-editor { display: flex; align-items: stretch; min-width: 0; }
+.cell-editor pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 16px 14px;
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.85;
+}
+.cell-editor .cell-line-numbers {
+  flex: 0 0 auto;
+  user-select: none;
+  text-align: right;
+  color: #b0b5c5;
+  background: #f2f3f8;
+  border-right: 1px solid #e9eaf2;
+  padding-inline: 12px;
+  overflow: hidden;
+}
+.cell-editor .cell-source { flex: 1; min-width: 0; overflow-x: auto; }
+.cell-source:focus-visible { outline: 2px solid #a99bdf; outline-offset: -2px; }
+.cell-source code { font: inherit; color: #35415c; }
+.syntax-comment { color: #8a94a1; font-style: italic; }
+.syntax-string { color: #45856c; }
+.syntax-number { color: #b37c3c; }
+.syntax-keyword { color: #8460b0; font-weight: 600; }
+@media (max-width: 680px) {
+  .cell-markdown-body { padding: 16px; }
+  .cell-markdown-body h1 { font-size: 18px; }
+  .cell-editor pre { font-size: 11px; padding: 13px 10px; }
+  .cell-editor .cell-line-numbers { padding-inline: 9px; }
+}

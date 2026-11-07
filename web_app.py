@@ -10,9 +10,11 @@ import uuid
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlsplit, quote
 
 from dotenv import load_dotenv
+from delivery import TEACHER_NOTEBOOK, STUDENT_NOTEBOOK, formatted_question
+from schemas import Problem
 
 ROOT = Path(__file__).resolve().parent
 CATALOG = {
@@ -79,7 +81,7 @@ class JobStore:
                 raise RuntimeError("다른 문제를 생성하고 있습니다. 완료 후 다시 시도하세요.")
             identifier = uuid.uuid4().hex
             job = {"id": identifier, "status": "running", "message": "생성을 준비하고 있습니다.",
-                   "selection": selection, "questions": [], "errors": [], "review": None,
+                   "selection": selection, "questions": [], "errors": [], "review": None, "files": {},
                    "output": str(self.output_root / f"web_{identifier}"), "run": None}
             self.jobs[identifier] = job
         threading.Thread(target=self.run, args=(identifier,), daemon=True).start()
@@ -92,13 +94,13 @@ class JobStore:
         questions = []
         for path in folders:
             try:
-                question = json.loads(path.read_text(encoding="utf-8"))
+                problem = Problem.model_validate_json(path.read_text(encoding="utf-8"))
                 folder = path.parent.parent
                 run = folder.parent
-                question["number"] = int(folder.name.split("_")[-1])
-                question["validation"] = json.loads((path.parent / "validation.json").read_text(encoding="utf-8"))
+                number = int(folder.name.split("_")[-1])
                 csv_path = folder / "student" / "data.csv"
-                question["csv_file"] = str(csv_path.relative_to(run)) if csv_path.exists() else None
+                question = formatted_question(problem, number, f"data/problem_{number:02d}.csv" if csv_path.exists() else None)
+                question["validation"] = json.loads((path.parent / "validation.json").read_text(encoding="utf-8"))
                 questions.append(question)
                 job["run"] = str(run)
             except (OSError, ValueError, KeyError):
@@ -113,6 +115,10 @@ class JobStore:
                 pass
         if job["run"] and (Path(job["run"]) / "review_all.ipynb").exists():
             job["review"] = "review_all.ipynb"
+        if job["run"]:
+            for key, name in [("instructor", TEACHER_NOTEBOOK), ("student", STUDENT_NOTEBOOK)]:
+                if (Path(job["run"]) / name).is_file():
+                    job["files"][key] = name
 
     def run(self, identifier):
         job = self.jobs[identifier]
@@ -152,6 +158,13 @@ class JobStore:
                 raise FileNotFoundError
             run = Path(job["run"]).resolve()
             target = (run / filename).resolve()
+            # While the full paper is being assembled, serve the original data bytes
+            # at the same filename referenced by the live instructor preview.
+            if not target.exists() and target.suffix == ".csv" and filename.startswith("data/problem_") and target.is_relative_to(run):
+                stem = Path(filename).stem
+                source = run / stem / "student" / "data.csv"
+                if Path(filename).parent == Path("data") and source.is_file():
+                    return source
             if not target.is_relative_to(run) or target.suffix not in (".csv", ".ipynb") or not target.is_file():
                 raise FileNotFoundError
             return target
@@ -164,9 +177,12 @@ class JobStore:
             run = Path(job["run"])
             buffer = io.BytesIO()
             with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-                for path in sorted(run.rglob("*")):
-                    if path.is_file() and not path.is_symlink():
-                        archive.write(path, path.relative_to(run))
+                paths = [run / TEACHER_NOTEBOOK, run / STUDENT_NOTEBOOK]
+                paths += sorted((run / "data").glob("*.csv"))
+                for path in paths:
+                    if not path.is_file() or path.is_symlink():
+                        raise FileNotFoundError
+                    archive.write(path, path.relative_to(run))
             return buffer.getvalue()
 
 
@@ -181,7 +197,8 @@ def handler(store):
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             if filename:
-                self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+                fallback = "download" + Path(filename).suffix
+                self.send_header("Content-Disposition", f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(filename)}")
             self.end_headers()
             self.wfile.write(body)
 
@@ -205,8 +222,9 @@ def handler(store):
                     return self.send_data(200 if snapshot else 404, snapshot or {"error": "생성 기록을 찾을 수 없습니다."})
                 try:
                     if parts[3] == "download":
-                        target = store.download(identifier, parse_qs(parsed.query).get("file", [""])[0])
-                        return self.send_data(200, target.read_bytes(), "application/octet-stream", target.name)
+                        requested = parse_qs(parsed.query).get("file", [""])[0]
+                        target = store.download(identifier, requested)
+                        return self.send_data(200, target.read_bytes(), "application/octet-stream", Path(requested).name)
                     if parts[3] == "archive":
                         return self.send_data(200, store.archive(identifier), "application/zip", "questions.zip")
                 except (OSError, ValueError):

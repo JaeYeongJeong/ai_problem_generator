@@ -36,9 +36,15 @@ def problem(csv_text=None):
         concepts=["조건 필터링", "합계"], problem_markdown=f"# {title}\n\n{statement}\n",
         student_code=student, answer_code=answer, expected_output=expected,
         explanation="조건에 맞는 값을 선택한 다음 합산합니다. 결과뿐 아니라 처리 과정을 함께 평가합니다.",
-        rubric=[dict(criterion="조건에 맞는 데이터 선택", points=40, partial_credit="선택 조건은 맞으나 일부 경계값 처리가 틀리면 20점"),
-                dict(criterion="합계 계산", points=40, partial_credit="합산 과정은 맞으나 결과 일부가 틀리면 20점"),
-                dict(criterion="출력 또는 반환 형식", points=20, partial_credit="값은 맞으나 형식이 틀리면 10점")],
+        grading_guidelines_markdown=(
+            "## 채점 기준 가이드라인\n\n"
+            "- **핵심 확인**: 조건에 맞는 값을 선택하고 합계를 정확히 계산했는지 확인합니다.\n"
+            "- **대안 풀이**: 요구사항과 사용 제한을 충족하면 정답 코드와 다른 풀이도 인정합니다.\n"
+            "- **경계값**: " + ("결측치 제외와 지역명 정렬, 정수 출력 형식을 확인합니다." if csv_text else
+                                     "빈 리스트, 음수 짝수, 0을 확인하고 원본 리스트가 바뀌지 않았는지 확인합니다.") +
+            "\n- **유의사항**: 실행 결과와 처리 과정을 함께 검토하고 단순 코드 문자열 일치로 판단하지 않습니다.\n\n"
+            "강사 검토용 참고이며 확정된 배점표가 아닙니다."
+        ),
         test_cases=[dict(description="기본 입력", input_description="동봉된 CSV" if csv_text else "[1, 2, 3, 4]", expected_result=expected)],
         libraries=libraries,
     )

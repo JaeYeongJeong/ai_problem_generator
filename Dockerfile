@@ -10,7 +10,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Explicit copies prevent local keys, Git metadata and generated results entering the image.
-COPY main.py generator.py schemas.py demo.py review.py web_app.py ./
+COPY main.py generator.py schemas.py demo.py review.py delivery.py web_app.py ./
 COPY web/ ./web/
 
 EXPOSE 8000
