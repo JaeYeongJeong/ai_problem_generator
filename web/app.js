@@ -3,7 +3,19 @@ const state = { catalog: null, category: 'python', topic: '변수', generateCSV:
 const el = (tag, text, cls) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if(cls) node.className=cls; return node; };
 function message(text){ $('#form-error').textContent=text; $('#form-error').hidden=!text; }
 function total(){ return Object.values(state.counts).reduce((a,b)=>a+b,0); }
-function update(){ $('#total').textContent=total(); $('#generate').disabled=state.busy || total()<1 || total()>10 || !state.catalog?.ready; if(total()>10) message('총 10문항까지 생성할 수 있습니다.'); else if(!state.busy) message(''); $('#data-note').textContent=state.category==='pythonlib'&&state.generateCSV?'100행의 가상 CSV를 함께 생성하고 해당 데이터를 활용하는 문제를 출제합니다.':state.category==='pythonlib'?'CSV 없이, 필요한 입력 데이터를 문제에 직접 제공하는 코딩 문제를 생성합니다.':'선택한 주제로 일반 코딩 문제를 생성합니다.'; }
+function update(){
+  $('#total').textContent=total();
+  $('#generate').disabled=state.busy || total()<1 || total()>10 || !state.catalog?.ready;
+  if(total()>10) message('총 10문항까지 생성할 수 있습니다.'); else if(!state.busy) message('');
+  if(state.category==='pythonlib'){
+    $('#data-note').textContent=state.generateCSV?'100행의 가상 CSV를 함께 생성하고 해당 데이터를 활용하는 문제를 출제합니다.':'CSV 없이, 필요한 입력 데이터를 문제에 직접 제공하는 코딩 문제를 생성합니다.';
+  }else{
+    const topics=state.catalog?.categories.python.topics||[];
+    const index=topics.indexOf(state.topic);
+    const later=index>=0?topics.slice(index+1):[];
+    $('#data-note').textContent=state.topic+'까지 배운 학생 기준으로 출제합니다.'+(later.length?' 이후 단원('+later.join(' · ')+')은 제외합니다.':' 이전 단원의 내용을 함께 사용할 수 있습니다.');
+  }
+}
 function choice(text, selected, click){ const button=el('button',text,'choice'+(selected?' selected':'')); button.type='button'; button.setAttribute('aria-pressed',String(selected)); button.disabled=state.busy; button.onclick=click; return button; }
 function renderChoices(){ const categories=$('#categories'); categories.replaceChildren(); for(const [key,item] of Object.entries(state.catalog.categories)){categories.append(choice(item.label,state.category===key,()=>{state.category=key;state.topic=item.topics[0];renderChoices();update();}));} const topics=$('#topics');topics.replaceChildren();for(const topic of state.catalog.categories[state.category].topics){topics.append(choice(topic,state.topic===topic,()=>{state.topic=topic;renderChoices();update();}));} $('#csv-settings').hidden=state.category!=='pythonlib'; const csv=$('#csv-choices');csv.replaceChildren();for(const [value,label] of [[false,'생성 안 함'],[true,'가상 CSV 생성']]){csv.append(choice(label,state.generateCSV===value,()=>{state.generateCSV=value;renderChoices();update();}));} }
 function renderCounts(){ const target=$('#counts'); for(const [i,level] of ['쉬움','보통','어려움'].entries()){const row=el('div',undefined,'level-row');const label=el('label',undefined,'level-name');label.htmlFor='count-'+i;label.append(el('span','', 'dot '+['','medium','hard'][i]),document.createTextNode(level));const select=el('select');select.id='count-'+i;select.setAttribute('aria-label',level+' 문항 수');for(let n=0;n<=10;n++){const option=el('option',n+'개');option.value=n;select.append(option);}select.value=state.counts[level];select.onchange=()=>{state.counts[level]=Number(select.value);update();};row.append(label,select);target.append(row);} }

@@ -15,10 +15,11 @@ from urllib.parse import parse_qs, urlsplit, quote
 from dotenv import load_dotenv
 from delivery import TEACHER_NOTEBOOK, STUDENT_NOTEBOOK, formatted_question
 from schemas import Problem
+from curriculum import PYTHON_TOPICS
 
 ROOT = Path(__file__).resolve().parent
 CATALOG = {
-    "python": {"label": "Python", "subject": "파이썬", "topics": ["변수", "조건문", "반복문", "함수", "리스트", "딕셔너리", "문자열"]},
+    "python": {"label": "Python", "subject": "파이썬", "topics": PYTHON_TOPICS},
     "pythonlib": {"label": "Python 라이브러리", "subject": "파이썬 라이브러리", "topics": ["numpy", "pandas"]},
 }
 LEVELS = ("쉬움", "보통", "어려움")

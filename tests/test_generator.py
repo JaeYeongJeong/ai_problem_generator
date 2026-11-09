@@ -116,7 +116,7 @@ class GeneratorTests(unittest.TestCase):
                 with patch('main.API') as constructor:
                     api = constructor.return_value
                     api.calls = []
-                    api.generate.side_effect = lambda schema, request: demo.problem().model_copy(
+                    api.generate.side_effect = lambda schema, request: demo.curriculum_problem('반복문').model_copy(
                         update={'difficulty': request['difficulty']})
                     self.assertEqual(main(['--topic', '반복문', '--difficulty-counts',
                                            '쉬움:1,보통:2,어려움:1', '--output', temp]), 0)

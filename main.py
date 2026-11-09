@@ -14,6 +14,7 @@ from generator import API, make_csv, save_bundle
 from schemas import DatasetSpec, Problem
 from review import build_review
 from delivery import build_delivery
+from curriculum import policy_for, validate_curriculum, CurriculumViolation
 
 ROOT = Path(__file__).resolve().parent
 
@@ -83,6 +84,7 @@ def main(argv=None):
     if not 1 <= count <= 10 or not 1 <= args.rows <= 1000:
         p.error("문항 수는 1~10, CSV 행 수는 1~1000으로 설정하세요.")
     plan = args.difficulty_counts if args.difficulty_counts is not None else [args.difficulty] * count
+    curriculum = policy_for(args.subject, args.topic)
     if args.csv and args.type != "data":
         p.error("--csv는 --type data와 함께 사용하세요.")
     if args.demo and args.csv:
@@ -118,6 +120,8 @@ def main(argv=None):
             request = {"subject": args.subject, "topic": args.topic, "difficulty": difficulty,
                        "constraints": args.constraints, "question_index": i + 1,
                        "variation_seed": args.seed + i}
+            if curriculum:
+                request["curriculum"] = curriculum
             spec, data = None, source
             if args.type == "data" and data is None:
                 print(f"[{i+1}/{len(plan)} / {difficulty}] 데이터 설계 및 CSV 생성", flush=True)
@@ -134,11 +138,21 @@ def main(argv=None):
                 data = make_csv(spec, args.rows, args.seed + i)
             print(f"[{i+1}/{len(plan)} / {difficulty}] 문제·정답 생성", flush=True)
             if args.demo:
-                from demo import problem
-                result = problem(data).model_copy(update={"difficulty": difficulty})
+                from demo import problem, curriculum_problem
+                result = (curriculum_problem(curriculum["current_unit"]) if curriculum and data is None else problem(data)).model_copy(update={"difficulty": difficulty})
             else:
-                result = api.generate(Problem, dict(request, task="문제 1개와 학생용 풀이 칸·강사용 정답·테스트 사례를 생성하라. 웹 전용 채점 가이드라인은 grading_guidelines_markdown 필드에만 작성하고 확정 배점과 부분점수는 작성하지 마라.",
-                    csv_content=data, dataset_spec=spec.model_dump() if spec else None))
+                generation_request = dict(request, task="문제 1개와 학생용 풀이 칸·강사용 정답·테스트 사례를 생성하라. 웹 전용 채점 가이드라인은 grading_guidelines_markdown 필드에만 작성하고 확정 배점과 부분점수는 작성하지 마라.",
+                    csv_content=data, dataset_spec=spec.model_dump() if spec else None)
+                for attempt in range(2):
+                    result = api.generate(Problem, generation_request)
+                    try:
+                        validate_curriculum(result, curriculum)
+                        break
+                    except CurriculumViolation as exc:
+                        if attempt == 1:
+                            raise
+                        print(f"[{i+1}/{len(plan)} / {difficulty}] 학습 범위에 맞게 다시 생성 중", flush=True)
+                        generation_request["curriculum_feedback"] = str(exc)
             folder = session / f"problem_{i+1:02d}"
             save_bundle(folder, result, data, spec, dict(request, model=model if api else "fixed_demo",
                         generated_at=datetime.now().astimezone().isoformat(),

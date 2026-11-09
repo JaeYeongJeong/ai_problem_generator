@@ -10,9 +10,12 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from schemas import DatasetSpec, Problem
+from curriculum import validate_curriculum
 
 
 SYSTEM = """당신은 한국어 Python 과목평가 출제자다. 지시된 교육 범위와 난이도를 지켜라.
+curriculum이 제공되면 allowed_units만 사용하고 excluded_units를 요구하지 마라. 이 제한은 난이도와 추가 조건보다 우선한다.
+학습 범위는 문제·준비 코드·정답·해설·가이드라인 전체에 적용한다. 기본 내장 함수 호출과 사용자 정의 함수를 구분하라.
 모호한 조건과 미학습 고급 문법을 피하고, 실행 가능한 학생 코드와 정답을 작성하라.
 학생 코드에는 정답을 노출하지 말고 TODO 또는 pass를 사용하라.
 문제에는 입력, 출력, 제약, 반올림과 정렬 규칙을 명시하라.
@@ -81,11 +84,13 @@ def make_csv(spec: DatasetSpec, rows: int, seed: int) -> str:
     return stream.getvalue()
 
 
-def check_problem(problem: Problem):
+def check_problem(problem: Problem, curriculum=None):
     ast.parse(problem.student_code)
     ast.parse(problem.answer_code)
+    validate_curriculum(problem, curriculum)
     return {
         "schema_valid": True, "grading_status": "deferred",
+        "curriculum_valid": True if curriculum else None,
         "student_syntax_valid": True, "answer_syntax_valid": True,
         "answer_execution": "not_run", "expected_output_verified": False,
         "review_required": ["정답 실행 및 예상 출력 대조", "난이도 및 학습 범위"],
@@ -102,7 +107,7 @@ def notebook(problem, instructor=False):
 
 
 def save_bundle(folder: Path, problem, csv_text, spec, metadata):
-    validation = check_problem(problem)
+    validation = check_problem(problem, metadata.get("curriculum"))
     folder.mkdir(parents=True, exist_ok=False)
     student, instructor = folder / "student", folder / "instructor"
     student.mkdir()
